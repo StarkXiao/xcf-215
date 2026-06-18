@@ -4,7 +4,8 @@ import { useGameStore } from '@/stores/game'
 import { getBeastById } from '@/data/beasts'
 import { FOODS_DATA, getFoodById } from '@/data/foods'
 import { BeastDisplay } from '@/utils/pixi'
-import { RARITY_NAMES, ELEMENT_NAMES, RARITY_COLORS, ELEMENT_COLORS } from '@/types'
+import { RARITY_NAMES, ELEMENT_NAMES, RARITY_COLORS, ELEMENT_COLORS, BOND_CATEGORY_COLORS } from '@/types'
+import type { BondEffect } from '@/types'
 
 const gameStore = useGameStore()
 const selectedBeastId = ref<string | null>(null)
@@ -114,6 +115,22 @@ const isFavoriteFood = (foodId: string): boolean => {
   if (!selectedBeastData.value) return false
   return selectedBeastData.value.favoriteFood.includes(foodId)
 }
+
+const selectedBeastBondBonus = computed<BondEffect | null>(() => {
+  if (!selectedBeast.value) return null
+  return gameStore.getBeastBondBonus(selectedBeast.value.beastId)
+})
+
+const selectedBeastBondList = computed(() => {
+  if (!selectedBeast.value) return []
+  return gameStore.activeBondList.filter(b => b.matchedBeastIds.includes(selectedBeast.value!.beastId))
+})
+
+const hasSelectedBeastBond = computed(() => {
+  if (!selectedBeastBondBonus.value) return false
+  const b = selectedBeastBondBonus.value
+  return b.hpPercent > 0 || b.attackPercent > 0 || b.defensePercent > 0 || b.speedPercent > 0
+})
 
 const getHealCost = (): number => {
   if (!selectedBeast.value) return 0
@@ -251,17 +268,40 @@ const getHealCost = (): number => {
           <div class="attr-card">
             <span class="attr-icon">⚔️</span>
             <span class="attr-value">{{ selectedBeast.attack }}</span>
+            <span class="attr-bonus" v-if="selectedBeastBondBonus && selectedBeastBondBonus.attackPercent > 0">+{{ selectedBeastBondBonus.attackPercent }}%</span>
             <span class="attr-name">攻击</span>
           </div>
           <div class="attr-card">
             <span class="attr-icon">🛡️</span>
             <span class="attr-value">{{ selectedBeast.defense }}</span>
+            <span class="attr-bonus" v-if="selectedBeastBondBonus && selectedBeastBondBonus.defensePercent > 0">+{{ selectedBeastBondBonus.defensePercent }}%</span>
             <span class="attr-name">防御</span>
           </div>
           <div class="attr-card">
             <span class="attr-icon">💨</span>
             <span class="attr-value">{{ selectedBeast.speed }}</span>
+            <span class="attr-bonus" v-if="selectedBeastBondBonus && selectedBeastBondBonus.speedPercent > 0">+{{ selectedBeastBondBonus.speedPercent }}%</span>
             <span class="attr-name">速度</span>
+          </div>
+        </div>
+
+        <div class="feed-bond-bar" v-if="hasSelectedBeastBond">
+          <span class="feed-bond-label">🔗 羁绊加成</span>
+          <div class="feed-bond-tags">
+            <span class="feed-bond-tag" v-if="selectedBeastBondBonus && selectedBeastBondBonus.hpPercent > 0">❤️+{{ selectedBeastBondBonus.hpPercent }}%</span>
+            <span class="feed-bond-tag" v-if="selectedBeastBondBonus && selectedBeastBondBonus.attackPercent > 0">⚔️+{{ selectedBeastBondBonus.attackPercent }}%</span>
+            <span class="feed-bond-tag" v-if="selectedBeastBondBonus && selectedBeastBondBonus.defensePercent > 0">🛡️+{{ selectedBeastBondBonus.defensePercent }}%</span>
+            <span class="feed-bond-tag" v-if="selectedBeastBondBonus && selectedBeastBondBonus.speedPercent > 0">💨+{{ selectedBeastBondBonus.speedPercent }}%</span>
+          </div>
+        </div>
+        <div class="feed-bond-list" v-if="selectedBeastBondList.length > 0">
+          <div 
+            v-for="bond in selectedBeastBondList" 
+            :key="bond.config.id"
+            class="feed-bond-item"
+          >
+            <span class="feed-bond-icon">{{ bond.config.icon }}</span>
+            <span class="feed-bond-name" :style="{ color: BOND_CATEGORY_COLORS[bond.config.category] }">{{ bond.config.name }}</span>
           </div>
         </div>
 
@@ -589,6 +629,71 @@ const getHealCost = (): number => {
 .attr-name {
   font-size: 11px;
   color: var(--text-secondary);
+}
+
+.attr-bonus {
+  font-size: 10px;
+  color: #22C55E;
+  font-weight: bold;
+}
+
+.feed-bond-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: linear-gradient(135deg, rgba(34, 197, 94, 0.12), rgba(255, 215, 0, 0.08));
+  border: 1px solid rgba(34, 197, 94, 0.25);
+  border-radius: 8px;
+  margin-bottom: 8px;
+}
+
+.feed-bond-label {
+  font-size: 12px;
+  font-weight: bold;
+  color: var(--accent-color);
+  white-space: nowrap;
+}
+
+.feed-bond-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.feed-bond-tag {
+  padding: 1px 5px;
+  background: rgba(255, 215, 0, 0.12);
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: bold;
+  color: var(--accent-color);
+  white-space: nowrap;
+}
+
+.feed-bond-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.feed-bond-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 8px;
+}
+
+.feed-bond-icon {
+  font-size: 13px;
+}
+
+.feed-bond-name {
+  font-size: 11px;
+  font-weight: bold;
 }
 
 .action-buttons {

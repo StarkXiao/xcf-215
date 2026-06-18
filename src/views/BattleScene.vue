@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue'
+import { ref, onMounted, onUnmounted, watch, nextTick, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useGameStore } from '@/stores/game'
 import { getBeastById } from '@/data/beasts'
 import { getStageById } from '@/data/stages'
 import { BattleScene as PixiBattleScene } from '@/utils/pixi'
-import { ELEMENT_COLORS, RARITY_COLORS } from '@/types'
+import { ELEMENT_COLORS, RARITY_COLORS, BOND_CATEGORY_COLORS } from '@/types'
+import type { BondEffect } from '@/types'
 
 const router = useRouter()
 const gameStore = useGameStore()
@@ -41,6 +42,22 @@ const availableSkills = () => {
     .map((skill, index) => ({ ...skill, index }))
     .filter(skill => skill.unlocked)
 }
+
+const battleBondBonus = computed<BondEffect | null>(() => {
+  if (!gameStore.battle.playerBeast) return null
+  return gameStore.getBeastBondBonus(gameStore.battle.playerBeast.beastId)
+})
+
+const battleBondList = computed(() => {
+  if (!gameStore.battle.playerBeast) return []
+  return gameStore.activeBondList.filter(b => b.matchedBeastIds.includes(gameStore.battle.playerBeast!.beastId))
+})
+
+const hasBattleBond = computed(() => {
+  if (!battleBondBonus.value) return false
+  const b = battleBondBonus.value
+  return b.hpPercent > 0 || b.attackPercent > 0 || b.defensePercent > 0 || b.speedPercent > 0
+})
 
 onMounted(() => {
   if (!gameStore.battle.inBattle) {
@@ -250,6 +267,14 @@ const getRewardText = (reward: any) => {
 
       <div class="turn-indicator" :class="{ 'player-turn': gameStore.battle.turn === 'player' }">
         {{ gameStore.battle.turn === 'player' ? '⚡ 你的回合' : '⏳ 敌方回合' }}
+      </div>
+      <div class="bond-indicator" v-if="hasBattleBond">
+        <span class="bond-indicator-icon">🔗</span>
+        <span class="bond-indicator-text" v-if="battleBondBonus">
+          <span v-if="battleBondBonus.attackPercent > 0">⚔️+{{ battleBondBonus.attackPercent }}% </span>
+          <span v-if="battleBondBonus.defensePercent > 0">🛡️+{{ battleBondBonus.defensePercent }}% </span>
+          <span v-if="battleBondBonus.speedPercent > 0">💨+{{ battleBondBonus.speedPercent }}% </span>
+        </span>
       </div>
     </div>
 
@@ -501,6 +526,33 @@ const getRewardText = (reward: any) => {
   color: var(--accent-color);
   border-color: var(--accent-color);
   box-shadow: 0 0 15px rgba(255, 215, 0, 0.3);
+}
+
+.bond-indicator {
+  position: absolute;
+  bottom: 50px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 12px;
+  background: rgba(255, 215, 0, 0.15);
+  border: 1px solid rgba(255, 215, 0, 0.3);
+  border-radius: 16px;
+  font-size: 11px;
+  font-weight: bold;
+  color: var(--accent-color);
+  white-space: nowrap;
+}
+
+.bond-indicator-icon {
+  font-size: 12px;
+}
+
+.bond-indicator-text {
+  display: flex;
+  gap: 4px;
 }
 
 .battle-log {

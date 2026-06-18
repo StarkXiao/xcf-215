@@ -4,7 +4,8 @@ import { useRouter } from 'vue-router'
 import { useGameStore } from '@/stores/game'
 import { getBeastById } from '@/data/beasts'
 import { BeastDisplay } from '@/utils/pixi'
-import { RARITY_NAMES, ELEMENT_NAMES, RARITY_COLORS, ELEMENT_COLORS } from '@/types'
+import { RARITY_NAMES, ELEMENT_NAMES, RARITY_COLORS, ELEMENT_COLORS, BOND_CATEGORY_NAMES, BOND_CATEGORY_COLORS } from '@/types'
+import type { ActiveBond, BondEffect } from '@/types'
 
 const router = useRouter()
 const gameStore = useGameStore()
@@ -16,6 +17,20 @@ const currentBeast = computed(() => {
   if (!gameStore.activeBeast) return null
   return getBeastById(gameStore.activeBeast.beastId)
 })
+
+const currentBeastBondBonus = computed<BondEffect | null>(() => {
+  if (!gameStore.activeBeast) return null
+  return gameStore.getBeastBondBonus(gameStore.activeBeast.beastId)
+})
+
+const formatBondEffect = (effect: BondEffect): string => {
+  const parts: string[] = []
+  if (effect.hpPercent > 0) parts.push(`❤️+${effect.hpPercent}%`)
+  if (effect.attackPercent > 0) parts.push(`⚔️+${effect.attackPercent}%`)
+  if (effect.defensePercent > 0) parts.push(`🛡️+${effect.defensePercent}%`)
+  if (effect.speedPercent > 0) parts.push(`💨+${effect.speedPercent}%`)
+  return parts.join(' ')
+}
 
 const quickActions = [
   { name: '灵兽孵化', icon: '🥚', path: '/hatch', color: '#F59E0B' },
@@ -153,14 +168,17 @@ const selectBeast = (beastId: string) => {
           <div class="attr-item">
             <span class="attr-icon">⚔️</span>
             <span class="attr-value">{{ gameStore.activeBeast.attack }}</span>
+            <span class="attr-bonus" v-if="currentBeastBondBonus && currentBeastBondBonus.attackPercent > 0">+{{ currentBeastBondBonus.attackPercent }}%</span>
           </div>
           <div class="attr-item">
             <span class="attr-icon">🛡️</span>
             <span class="attr-value">{{ gameStore.activeBeast.defense }}</span>
+            <span class="attr-bonus" v-if="currentBeastBondBonus && currentBeastBondBonus.defensePercent > 0">+{{ currentBeastBondBonus.defensePercent }}%</span>
           </div>
           <div class="attr-item">
             <span class="attr-icon">💨</span>
             <span class="attr-value">{{ gameStore.activeBeast.speed }}</span>
+            <span class="attr-bonus" v-if="currentBeastBondBonus && currentBeastBondBonus.speedPercent > 0">+{{ currentBeastBondBonus.speedPercent }}%</span>
           </div>
         </div>
       </div>
@@ -193,6 +211,55 @@ const selectBeast = (beastId: string) => {
               class="hp-fill" 
               :style="{ width: (beast.hp / beast.maxHp * 100) + '%' }"
             ></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="bond-section card" v-if="gameStore.activeBonds.length > 0">
+      <div class="card-header">
+        <span class="card-title">🔗 灵兽羁绊</span>
+        <span class="bond-active-count" v-if="gameStore.activeBondList.length > 0">
+          {{ gameStore.activeBondList.length }} 个激活
+        </span>
+      </div>
+      <div class="bond-list">
+        <div 
+          v-for="bond in gameStore.activeBonds" 
+          :key="bond.config.id"
+          class="bond-item"
+          :class="{ active: bond.active }"
+        >
+          <div class="bond-icon" :style="{ 
+            backgroundColor: bond.active ? BOND_CATEGORY_COLORS[bond.config.category] + '30' : 'rgba(0,0,0,0.2)',
+            borderColor: bond.active ? BOND_CATEGORY_COLORS[bond.config.category] : 'transparent'
+          }">
+            {{ bond.config.icon }}
+          </div>
+          <div class="bond-info">
+            <div class="bond-name" :style="{ color: bond.active ? BOND_CATEGORY_COLORS[bond.config.category] : 'var(--text-muted)' }">
+              {{ bond.config.name }}
+            </div>
+            <div class="bond-progress">
+              <span class="bond-count" :class="{ fulfilled: bond.active }">
+                {{ bond.currentCount }}/{{ bond.config.requiredCount }}
+              </span>
+              <div class="bond-progress-bar">
+                <div 
+                  class="bond-progress-fill"
+                  :style="{ 
+                    width: Math.min(100, (bond.currentCount / bond.config.requiredCount) * 100) + '%',
+                    backgroundColor: BOND_CATEGORY_COLORS[bond.config.category]
+                  }"
+                ></div>
+              </div>
+            </div>
+          </div>
+          <div class="bond-effects" v-if="bond.active">
+            <span class="effect-tag" v-if="bond.config.effects.hpPercent > 0">❤️+{{ bond.config.effects.hpPercent }}%</span>
+            <span class="effect-tag" v-if="bond.config.effects.attackPercent > 0">⚔️+{{ bond.config.effects.attackPercent }}%</span>
+            <span class="effect-tag" v-if="bond.config.effects.defensePercent > 0">🛡️+{{ bond.config.effects.defensePercent }}%</span>
+            <span class="effect-tag" v-if="bond.config.effects.speedPercent > 0">💨+{{ bond.config.effects.speedPercent }}%</span>
           </div>
         </div>
       </div>
@@ -502,6 +569,117 @@ const selectBeast = (beastId: string) => {
 .btn-small {
   padding: 6px 12px;
   font-size: 12px;
+}
+
+.bond-active-count {
+  font-size: 12px;
+  color: #22C55E;
+  font-weight: bold;
+}
+
+.bond-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.bond-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 10px;
+  border: 2px solid transparent;
+  transition: all 0.3s ease;
+}
+
+.bond-item.active {
+  border-color: rgba(255, 215, 0, 0.3);
+  background: rgba(255, 215, 0, 0.05);
+}
+
+.bond-item:not(.active) {
+  opacity: 0.6;
+}
+
+.bond-icon {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  font-size: 22px;
+  border: 2px solid;
+  flex-shrink: 0;
+}
+
+.bond-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.bond-name {
+  font-size: 13px;
+  font-weight: bold;
+  margin-bottom: 4px;
+}
+
+.bond-progress {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.bond-count {
+  font-size: 11px;
+  color: var(--text-muted);
+  min-width: 30px;
+}
+
+.bond-count.fulfilled {
+  color: #22C55E;
+  font-weight: bold;
+}
+
+.bond-progress-bar {
+  flex: 1;
+  height: 4px;
+  background: rgba(0, 0, 0, 0.4);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.bond-progress-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+.bond-effects {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.effect-tag {
+  padding: 2px 6px;
+  background: rgba(255, 215, 0, 0.15);
+  border-radius: 6px;
+  font-size: 10px;
+  font-weight: bold;
+  color: var(--accent-color);
+  white-space: nowrap;
+}
+
+.attr-bonus {
+  font-size: 10px;
+  color: #22C55E;
+  font-weight: bold;
 }
 
 @media (max-width: 480px) {

@@ -3,7 +3,8 @@ import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useGameStore } from '@/stores/game'
 import { getBeastById } from '@/data/beasts'
-import { RARITY_COLORS, ELEMENT_COLORS, ELEMENT_NAMES, RARITY_NAMES } from '@/types'
+import { RARITY_COLORS, ELEMENT_COLORS, ELEMENT_NAMES, RARITY_NAMES, BOND_CATEGORY_COLORS } from '@/types'
+import type { BondEffect } from '@/types'
 
 const router = useRouter()
 const gameStore = useGameStore()
@@ -15,6 +16,22 @@ const activeBeastData = computed(() => {
 
 const canBattle = computed(() => {
   return gameStore.activeBeast && gameStore.activeBeast.hp > 0
+})
+
+const activeBeastBondBonus = computed<BondEffect | null>(() => {
+  if (!gameStore.activeBeast) return null
+  return gameStore.getBeastBondBonus(gameStore.activeBeast.beastId)
+})
+
+const activeBeastBondList = computed(() => {
+  if (!gameStore.activeBeast) return []
+  return gameStore.activeBondList.filter(b => b.matchedBeastIds.includes(gameStore.activeBeast!.beastId))
+})
+
+const hasBondBonus = computed(() => {
+  if (!activeBeastBondBonus.value) return false
+  const b = activeBeastBondBonus.value
+  return b.hpPercent > 0 || b.attackPercent > 0 || b.defensePercent > 0 || b.speedPercent > 0
 })
 
 const startBattle = (stageId: string) => {
@@ -73,10 +90,29 @@ const getStageEnemiesText = (enemies: any[]): string => {
             <span class="hp-value">{{ gameStore.activeBeast.hp }}/{{ gameStore.activeBeast.maxHp }}</span>
           </div>
           <div class="beast-attrs">
-            <span>⚔️ {{ gameStore.activeBeast.attack }}</span>
-            <span>🛡️ {{ gameStore.activeBeast.defense }}</span>
-            <span>💨 {{ gameStore.activeBeast.speed }}</span>
+            <span>⚔️ {{ gameStore.activeBeast.attack }}<span class="bond-plus" v-if="activeBeastBondBonus && activeBeastBondBonus.attackPercent > 0">(+{{ activeBeastBondBonus.attackPercent }}%)</span></span>
+            <span>🛡️ {{ gameStore.activeBeast.defense }}<span class="bond-plus" v-if="activeBeastBondBonus && activeBeastBondBonus.defensePercent > 0">(+{{ activeBeastBondBonus.defensePercent }}%)</span></span>
+            <span>💨 {{ gameStore.activeBeast.speed }}<span class="bond-plus" v-if="activeBeastBondBonus && activeBeastBondBonus.speedPercent > 0">(+{{ activeBeastBondBonus.speedPercent }}%)</span></span>
           </div>
+        </div>
+      </div>
+      <div class="bond-bonus-bar" v-if="hasBondBonus">
+        <span class="bond-bar-label">🔗 羁绊加成</span>
+        <div class="bond-bar-tags">
+          <span class="bond-tag" v-if="activeBeastBondBonus && activeBeastBondBonus.hpPercent > 0">❤️+{{ activeBeastBondBonus.hpPercent }}%</span>
+          <span class="bond-tag" v-if="activeBeastBondBonus && activeBeastBondBonus.attackPercent > 0">⚔️+{{ activeBeastBondBonus.attackPercent }}%</span>
+          <span class="bond-tag" v-if="activeBeastBondBonus && activeBeastBondBonus.defensePercent > 0">🛡️+{{ activeBeastBondBonus.defensePercent }}%</span>
+          <span class="bond-tag" v-if="activeBeastBondBonus && activeBeastBondBonus.speedPercent > 0">💨+{{ activeBeastBondBonus.speedPercent }}%</span>
+        </div>
+      </div>
+      <div class="bond-detail-list" v-if="activeBeastBondList.length > 0">
+        <div 
+          v-for="bond in activeBeastBondList" 
+          :key="bond.config.id"
+          class="bond-detail-item"
+        >
+          <span class="bond-detail-icon">{{ bond.config.icon }}</span>
+          <span class="bond-detail-name" :style="{ color: BOND_CATEGORY_COLORS[bond.config.category] }">{{ bond.config.name }}</span>
         </div>
       </div>
       <div class="beast-warning" v-if="gameStore.activeBeast.hp <= 0">
@@ -432,6 +468,71 @@ const getStageEnemiesText = (enemies: any[]): string => {
 
 .stage-btn {
   width: 100%;
+}
+
+.bond-plus {
+  font-size: 11px;
+  color: #22C55E;
+  font-weight: bold;
+}
+
+.bond-bonus-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: linear-gradient(135deg, rgba(34, 197, 94, 0.15), rgba(255, 215, 0, 0.1));
+  border: 1px solid rgba(34, 197, 94, 0.3);
+  border-radius: 8px;
+  margin-top: 10px;
+}
+
+.bond-bar-label {
+  font-size: 12px;
+  font-weight: bold;
+  color: var(--accent-color);
+  white-space: nowrap;
+}
+
+.bond-bar-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.bond-tag {
+  padding: 2px 6px;
+  background: rgba(255, 215, 0, 0.15);
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: bold;
+  color: var(--accent-color);
+  white-space: nowrap;
+}
+
+.bond-detail-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.bond-detail-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 8px;
+}
+
+.bond-detail-icon {
+  font-size: 14px;
+}
+
+.bond-detail-name {
+  font-size: 11px;
+  font-weight: bold;
 }
 
 .battle-tips {

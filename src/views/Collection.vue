@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { useGameStore } from '@/stores/game'
-import { RARITY_NAMES, ELEMENT_NAMES, RARITY_COLORS, ELEMENT_COLORS } from '@/types'
-import type { BeastData, Rarity, Element } from '@/types'
+import { RARITY_NAMES, ELEMENT_NAMES, RARITY_COLORS, ELEMENT_COLORS, BOND_CATEGORY_NAMES, BOND_CATEGORY_COLORS } from '@/types'
+import type { BeastData, Rarity, Element, ActiveBond } from '@/types'
 
 const gameStore = useGameStore()
 const selectedBeast = ref<(BeastData & { discovered: boolean }) | null>(null)
@@ -83,6 +83,29 @@ const elementOptions = [
   { value: 'wind', label: '风' },
   { value: 'ice', label: '冰' }
 ]
+
+const bondProgress = computed(() => {
+  const total = gameStore.activeBonds.length
+  const active = gameStore.activeBondList.length
+  return { total, active, percentage: total > 0 ? Math.floor((active / total) * 100) : 0 }
+})
+
+const bondsByCategory = computed(() => {
+  const categories: { key: string; label: string; color: string; bonds: ActiveBond[] }[] = []
+  const seen = new Set<string>()
+  for (const cat of ['element', 'rarity', 'special'] as const) {
+    const bonds = gameStore.activeBonds.filter(b => b.config.category === cat)
+    if (bonds.length > 0) {
+      categories.push({
+        key: cat,
+        label: BOND_CATEGORY_NAMES[cat],
+        color: BOND_CATEGORY_COLORS[cat],
+        bonds
+      })
+    }
+  }
+  return categories
+})
 </script>
 
 <template>
@@ -165,6 +188,78 @@ const elementOptions = [
           >
             {{ option.label }}
           </button>
+        </div>
+      </div>
+    </div>
+
+    <div class="bond-codex card" v-if="gameStore.activeBonds.length > 0">
+      <div class="card-header">
+        <span class="card-title">🔗 羁绊图鉴</span>
+        <span class="bond-progress-text" v-if="bondProgress.active > 0">
+          {{ bondProgress.active }}/{{ bondProgress.total }} 已激活
+        </span>
+      </div>
+      <div class="bond-overview">
+        <div class="bond-overview-bar">
+          <div 
+            class="bond-overview-fill" 
+            :style="{ width: bondProgress.percentage + '%' }"
+          ></div>
+        </div>
+        <span class="bond-overview-percent">{{ bondProgress.percentage }}%</span>
+      </div>
+      <div 
+        v-for="category in bondsByCategory" 
+        :key="category.key"
+        class="bond-category"
+      >
+        <div class="bond-category-header">
+          <span class="bond-category-dot" :style="{ backgroundColor: category.color }"></span>
+          <span class="bond-category-name" :style="{ color: category.color }">{{ category.label }}</span>
+          <span class="bond-category-count">
+            {{ category.bonds.filter(b => b.active).length }}/{{ category.bonds.length }}
+          </span>
+        </div>
+        <div class="bond-category-list">
+          <div 
+            v-for="bond in category.bonds" 
+            :key="bond.config.id"
+            class="bond-codex-item"
+            :class="{ active: bond.active }"
+          >
+            <div class="bond-codex-icon" :style="{ 
+              backgroundColor: bond.active ? category.color + '20' : 'rgba(0,0,0,0.2)',
+              borderColor: bond.active ? category.color : 'transparent'
+            }">
+              {{ bond.config.icon }}
+            </div>
+            <div class="bond-codex-info">
+              <div class="bond-codex-name" :style="{ color: bond.active ? category.color : 'var(--text-muted)' }">
+                {{ bond.config.name }}
+              </div>
+              <div class="bond-codex-desc">{{ bond.config.description }}</div>
+              <div class="bond-codex-progress">
+                <span class="bond-codex-count" :class="{ fulfilled: bond.active }">
+                  {{ bond.currentCount }}/{{ bond.config.requiredCount }}
+                </span>
+                <div class="bond-codex-bar">
+                  <div 
+                    class="bond-codex-fill"
+                    :style="{ 
+                      width: Math.min(100, (bond.currentCount / bond.config.requiredCount) * 100) + '%',
+                      backgroundColor: category.color
+                    }"
+                  ></div>
+                </div>
+              </div>
+              <div class="bond-codex-effects" v-if="bond.active">
+                <span class="codex-effect" v-if="bond.config.effects.hpPercent > 0">❤️+{{ bond.config.effects.hpPercent }}%</span>
+                <span class="codex-effect" v-if="bond.config.effects.attackPercent > 0">⚔️+{{ bond.config.effects.attackPercent }}%</span>
+                <span class="codex-effect" v-if="bond.config.effects.defensePercent > 0">🛡️+{{ bond.config.effects.defensePercent }}%</span>
+                <span class="codex-effect" v-if="bond.config.effects.speedPercent > 0">💨+{{ bond.config.effects.speedPercent }}%</span>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -545,6 +640,179 @@ const elementOptions = [
   border-radius: 8px;
   font-size: 10px;
   font-weight: bold;
+}
+
+.bond-progress-text {
+  font-size: 12px;
+  color: #22C55E;
+  font-weight: bold;
+}
+
+.bond-overview {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.bond-overview-bar {
+  flex: 1;
+  height: 8px;
+  background: rgba(0, 0, 0, 0.4);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.bond-overview-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #22C55E, #F59E0B);
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+
+.bond-overview-percent {
+  font-size: 13px;
+  font-weight: bold;
+  color: var(--accent-color);
+  min-width: 36px;
+  text-align: right;
+}
+
+.bond-category {
+  margin-bottom: 12px;
+}
+
+.bond-category:last-child {
+  margin-bottom: 0;
+}
+
+.bond-category-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.bond-category-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.bond-category-name {
+  font-size: 13px;
+  font-weight: bold;
+}
+
+.bond-category-count {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.bond-category-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.bond-codex-item {
+  display: flex;
+  gap: 10px;
+  padding: 10px;
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: 10px;
+  border: 1px solid transparent;
+  transition: all 0.3s ease;
+}
+
+.bond-codex-item.active {
+  border-color: rgba(255, 215, 0, 0.2);
+  background: rgba(255, 215, 0, 0.03);
+}
+
+.bond-codex-item:not(.active) {
+  opacity: 0.65;
+}
+
+.bond-codex-icon {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  font-size: 20px;
+  border: 2px solid;
+  flex-shrink: 0;
+}
+
+.bond-codex-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.bond-codex-name {
+  font-size: 13px;
+  font-weight: bold;
+  margin-bottom: 2px;
+}
+
+.bond-codex-desc {
+  font-size: 10px;
+  color: var(--text-muted);
+  line-height: 1.4;
+  margin-bottom: 4px;
+}
+
+.bond-codex-progress {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.bond-codex-count {
+  font-size: 10px;
+  color: var(--text-muted);
+  min-width: 28px;
+}
+
+.bond-codex-count.fulfilled {
+  color: #22C55E;
+  font-weight: bold;
+}
+
+.bond-codex-bar {
+  flex: 1;
+  height: 3px;
+  background: rgba(0, 0, 0, 0.4);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.bond-codex-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+.bond-codex-effects {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.codex-effect {
+  padding: 1px 5px;
+  background: rgba(255, 215, 0, 0.12);
+  border-radius: 4px;
+  font-size: 9px;
+  font-weight: bold;
+  color: var(--accent-color);
+  white-space: nowrap;
 }
 
 .modal-overlay {

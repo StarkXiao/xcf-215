@@ -167,6 +167,45 @@ export const ELEMENT_NAMES: Record<Element, string> = {
   ice: '冰'
 }
 
+export type BondCategory = 'element' | 'rarity' | 'special'
+
+export interface BondEffect {
+  hpPercent: number
+  attackPercent: number
+  defensePercent: number
+  speedPercent: number
+}
+
+export interface BondConfig {
+  id: string
+  name: string
+  description: string
+  category: BondCategory
+  icon: string
+  effects: BondEffect
+  condition: Element | Rarity | string[]
+  requiredCount: number
+}
+
+export interface ActiveBond {
+  config: BondConfig
+  matchedBeastIds: string[]
+  currentCount: number
+  active: boolean
+}
+
+export const BOND_CATEGORY_NAMES: Record<BondCategory, string> = {
+  element: '同系羁绊',
+  rarity: '品阶羁绊',
+  special: '特殊羁绊'
+}
+
+export const BOND_CATEGORY_COLORS: Record<BondCategory, string> = {
+  element: '#22C55E',
+  rarity: '#8B5CF6',
+  special: '#F59E0B'
+}
+
 export const ELEMENT_COLORS: Record<Element, string> = {
   fire: '#EF4444',
   water: '#3B82F6',

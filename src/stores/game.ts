@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import type { PlayerData, OwnedBeast, Egg, BattleState, Rarity } from '@/types'
+import type { PlayerData, OwnedBeast, Egg, BattleState, Rarity, Element, ActiveBond, BondEffect } from '@/types'
 import { 
   saveGame, 
   loadGame, 
@@ -16,6 +16,7 @@ import { getBeastById, BEASTS_DATA } from '@/data/beasts'
 import { getFoodById, FOODS_DATA } from '@/data/foods'
 import { STAGES_DATA, getStageById } from '@/data/stages'
 import { getEggPoolById, selectRandomBeast } from '@/data/eggs'
+import { BONDS_DATA } from '@/data/bonds'
 
 export const useGameStore = defineStore('game', () => {
   const player = ref<PlayerData | null>(null)
@@ -61,6 +62,160 @@ export const useGameStore = defineStore('game', () => {
       discovered: player.value!.discoveredBeasts.includes(beast.id)
     }))
   })
+
+  const activeBonds = computed<ActiveBond[]>(() => {
+    if (!player.value || player.value.ownedBeasts.length === 0) return []
+
+    const ownedBeastIds = new Set(player.value.ownedBeasts.map(b => b.beastId))
+    const ownedElements: Element[] = []
+    const ownedRarities: Rarity[] = []
+    
+    for (const beast of player.value.ownedBeasts) {
+      const data = getBeastById(beast.beastId)
+      if (data) {
+        ownedElements.push(data.element)
+        ownedRarities.push(data.rarity)
+      }
+    }
+
+    const elementCounts: Partial<Record<Element, number>> = {}
+    for (const el of ownedElements) {
+      elementCounts[el] = (elementCounts[el] || 0) + 1
+    }
+
+    const rarityCounts: Partial<Record<Rarity, number>> = {}
+    for (const r of ownedRarities) {
+      rarityCounts[r] = (rarityCounts[r] || 0) + 1
+    }
+
+    const uniqueElements = new Set(ownedElements).size
+
+    const result: ActiveBond[] = []
+
+    for (const bondConfig of BONDS_DATA) {
+      let currentCount = 0
+      const matchedBeastIds: string[] = []
+
+      if (bondConfig.category === 'element') {
+        const el = bondConfig.condition as Element
+        currentCount = elementCounts[el] || 0
+        for (const beast of player.value.ownedBeasts) {
+          const data = getBeastById(beast.beastId)
+          if (data && data.element === el) {
+            if (!matchedBeastIds.includes(beast.beastId)) {
+              matchedBeastIds.push(beast.beastId)
+            }
+          }
+        }
+      } else if (bondConfig.category === 'rarity') {
+        const r = bondConfig.condition as Rarity
+        currentCount = rarityCounts[r] || 0
+        for (const beast of player.value.ownedBeasts) {
+          const data = getBeastById(beast.beastId)
+          if (data && data.rarity === r) {
+            if (!matchedBeastIds.includes(beast.beastId)) {
+              matchedBeastIds.push(beast.beastId)
+            }
+          }
+        }
+      } else if (bondConfig.category === 'special') {
+        const condArr = bondConfig.condition as string[]
+        
+        if (bondConfig.id === 'special_five_elements') {
+          const fiveEls = ['fire', 'water', 'wood', 'earth', 'metal'] as Element[]
+          let matchCount = 0
+          for (const el of fiveEls) {
+            if (elementCounts[el] && elementCounts[el]! > 0) {
+              matchCount++
+              for (const beast of player.value.ownedBeasts) {
+                const data = getBeastById(beast.beastId)
+                if (data && data.element === el && !matchedBeastIds.includes(beast.beastId)) {
+                  matchedBeastIds.push(beast.beastId)
+                  break
+                }
+              }
+            }
+          }
+          currentCount = matchCount
+        } else if (bondConfig.id === 'special_all_elements') {
+          const allEls = ['fire', 'water', 'wood', 'earth', 'metal', 'thunder', 'wind', 'ice'] as Element[]
+          let matchCount = 0
+          for (const el of allEls) {
+            if (elementCounts[el] && elementCounts[el]! > 0) {
+              matchCount++
+              for (const beast of player.value.ownedBeasts) {
+                const data = getBeastById(beast.beastId)
+                if (data && data.element === el && !matchedBeastIds.includes(beast.beastId)) {
+                  matchedBeastIds.push(beast.beastId)
+                  break
+                }
+              }
+            }
+          }
+          currentCount = matchCount
+        } else {
+          for (const condId of condArr) {
+            if (ownedBeastIds.has(condId)) {
+              currentCount++
+              matchedBeastIds.push(condId)
+            }
+          }
+        }
+      }
+
+      result.push({
+        config: bondConfig,
+        matchedBeastIds,
+        currentCount,
+        active: currentCount >= bondConfig.requiredCount
+      })
+    }
+
+    return result
+  })
+
+  const totalBondEffects = computed<BondEffect>(() => {
+    const total: BondEffect = { hpPercent: 0, attackPercent: 0, defensePercent: 0, speedPercent: 0 }
+    for (const bond of activeBonds.value) {
+      if (bond.active) {
+        total.hpPercent += bond.config.effects.hpPercent
+        total.attackPercent += bond.config.effects.attackPercent
+        total.defensePercent += bond.config.effects.defensePercent
+        total.speedPercent += bond.config.effects.speedPercent
+      }
+    }
+    return total
+  })
+
+  const activeBondList = computed(() => {
+    return activeBonds.value.filter(b => b.active)
+  })
+
+  const getBeastBondBonus = (beastId: string): BondEffect => {
+    const total: BondEffect = { hpPercent: 0, attackPercent: 0, defensePercent: 0, speedPercent: 0 }
+    for (const bond of activeBonds.value) {
+      if (bond.active && bond.matchedBeastIds.includes(beastId)) {
+        total.hpPercent += bond.config.effects.hpPercent
+        total.attackPercent += bond.config.effects.attackPercent
+        total.defensePercent += bond.config.effects.defensePercent
+        total.speedPercent += bond.config.effects.speedPercent
+      }
+    }
+    return total
+  }
+
+  const applyBondToStats = (beast: OwnedBeast): { 
+    hp: number; maxHp: number; attack: number; defense: number; speed: number 
+  } => {
+    const bonus = getBeastBondBonus(beast.beastId)
+    return {
+      hp: Math.floor(beast.hp * (1 + bonus.hpPercent / 100)),
+      maxHp: Math.floor(beast.maxHp * (1 + bonus.hpPercent / 100)),
+      attack: Math.floor(beast.attack * (1 + bonus.attackPercent / 100)),
+      defense: Math.floor(beast.defense * (1 + bonus.defensePercent / 100)),
+      speed: Math.floor(beast.speed * (1 + bonus.speedPercent / 100))
+    }
+  }
 
   const initGame = () => {
     const saved = loadGame()
@@ -328,17 +483,28 @@ export const useGameStore = defineStore('game', () => {
     const playerBeast = player.value.ownedBeasts.find(b => b.instanceId === player.value!.activeBeastId)
     
     if (!stage || !playerBeast || playerBeast.hp <= 0) return false
+
+    const bondStats = applyBondToStats(playerBeast)
     
     currentEnemyIndex.value = 0
     const firstEnemy = { ...stage.enemies[0] }
     
+    const battleBeast: OwnedBeast = {
+      ...playerBeast,
+      hp: bondStats.hp,
+      maxHp: bondStats.maxHp,
+      attack: bondStats.attack,
+      defense: bondStats.defense,
+      speed: bondStats.speed
+    }
+    
     battle.value = {
       inBattle: true,
-      playerBeast: { ...playerBeast },
+      playerBeast: battleBeast,
       enemy: firstEnemy,
-      turn: playerBeast.speed >= firstEnemy.speed ? 'player' : 'enemy',
+      turn: battleBeast.speed >= firstEnemy.speed ? 'player' : 'enemy',
       battleLog: [`⚔️ 进入 ${stage.name}！遭遇 ${firstEnemy.name}！`],
-      playerHp: playerBeast.hp,
+      playerHp: battleBeast.hp,
       enemyHp: firstEnemy.hp,
       stageId,
       rewards: []
@@ -556,6 +722,9 @@ export const useGameStore = defineStore('game', () => {
     discoveredBeasts,
     offlineRewards,
     currentEnemyIndex,
+    activeBonds,
+    totalBondEffects,
+    activeBondList,
     initGame,
     saveCurrentGame,
     collectOfflineRewards,
@@ -572,6 +741,8 @@ export const useGameStore = defineStore('game', () => {
     fleeBattle,
     healBeast,
     buyFood,
-    resetGame
+    resetGame,
+    getBeastBondBonus,
+    applyBondToStats
   }
 })
