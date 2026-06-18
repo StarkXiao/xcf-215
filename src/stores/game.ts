@@ -40,7 +40,8 @@ export const useGameStore = defineStore('game', () => {
 
   const activeBeast = computed(() => {
     if (!player.value || !player.value.activeBeastId) return null
-    return player.value.ownedBeasts.find(b => b.instanceId === player.value.activeBeastId) || null
+    const activeId = player.value.activeBeastId
+    return player.value.ownedBeasts.find(b => b.instanceId === activeId) || null
   })
 
   const stages = computed(() => {

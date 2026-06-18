@@ -20,7 +20,7 @@ export const BEAST_EMOJIS: Record<string, string> = {
 export class BeastSprite extends PIXI.Container {
   private emoji: PIXI.Text
   private glow: PIXI.Graphics
-  private particles: PIXI.ParticleContainer | null = null
+  private particles: PIXI.Container | null = null
   private animationSpeed: number = 1
   private floatOffset: number = 0
   private element: Element
@@ -70,7 +70,7 @@ export class BeastSprite extends PIXI.Container {
   }
 
   private createParticles() {
-    this.particles = new PIXI.Container()
+    const container = new PIXI.Container()
     const color = ELEMENT_COLORS[this.element]
     
     for (let i = 0; i < 15; i++) {
@@ -85,10 +85,11 @@ export class BeastSprite extends PIXI.Container {
       ;(particle as any).speed = 0.5 + Math.random() * 1
       ;(particle as any).offset = Math.random() * Math.PI * 2
       
-      this.particles.addChild(particle)
+      container.addChild(particle)
     }
     
-    this.addChild(this.particles)
+    this.particles = container
+    this.addChild(container)
   }
 
   update(delta: number) {

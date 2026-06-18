@@ -71,8 +71,8 @@ const navigateTo = (path: string) => {
 const selectBeast = (beastId: string) => {
   gameStore.setActiveBeast(beastId)
   
-  if (beastDisplay && currentBeast.value) {
-    const activeBeast = gameStore.ownedBeasts?.find(b => b.instanceId === beastId)
+  if (beastDisplay && currentBeast.value && gameStore.player) {
+    const activeBeast = gameStore.player.ownedBeasts.find((b: { instanceId: string }) => b.instanceId === beastId)
     if (activeBeast) {
       const beastData = getBeastById(activeBeast.beastId)
       if (beastData) {

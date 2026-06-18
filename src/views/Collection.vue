@@ -2,9 +2,10 @@
 import { ref, computed } from 'vue'
 import { useGameStore } from '@/stores/game'
 import { RARITY_NAMES, ELEMENT_NAMES, RARITY_COLORS, ELEMENT_COLORS } from '@/types'
+import type { BeastData, Rarity, Element } from '@/types'
 
 const gameStore = useGameStore()
-const selectedBeast = ref<any>(null)
+const selectedBeast = ref<(BeastData & { discovered: boolean }) | null>(null)
 const showDetail = ref(false)
 const filterRarity = ref<string>('all')
 const filterElement = ref<string>('all')

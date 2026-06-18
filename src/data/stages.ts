@@ -4,6 +4,7 @@ const createEnemy = (id: string, name: string, level: number, element: Element, 
   const baseHp = 80 + level * 20
   const baseAtk = 15 + level * 5
   const baseDef = 8 + level * 3
+  const baseSpd = 10 + level * 2
   return {
     id,
     name,
@@ -12,6 +13,7 @@ const createEnemy = (id: string, name: string, level: number, element: Element, 
     maxHp: baseHp,
     attack: baseAtk,
     defense: baseDef,
+    speed: baseSpd,
     element,
     icon
   }

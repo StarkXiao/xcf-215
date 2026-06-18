@@ -110,18 +110,19 @@ const useSkill = (skillIndex: number) => {
   if (gameStore.battle.turn !== 'player' || battleEnded.value) return
   
   const log = gameStore.playerAttack(skillIndex)
+  const scene = battleScene
   
-  if (battleScene) {
-    battleScene.playerAttack(() => {
+  if (scene) {
+    scene.playerAttack(() => {
       const isCrit = log.includes('暴击')
       const damageMatch = log.match(/(\d+)\s*点伤害/)
       const damage = damageMatch ? parseInt(damageMatch[1]) : 0
       
-      if (gameStore.battle.enemy && battleScene.enemySprite) {
-        battleScene.createDamageText(
+      if (gameStore.battle.enemy && scene.enemySprite) {
+        scene.createDamageText(
           damage,
-          battleScene.enemySprite.x,
-          battleScene.enemySprite.y - 30,
+          scene.enemySprite.x,
+          scene.enemySprite.y - 30,
           isCrit
         )
       }
@@ -155,18 +156,19 @@ watch(() => gameStore.battle.inBattle, (inBattle) => {
 })
 
 watch(() => gameStore.battle.turn, (turn) => {
-  if (turn === 'enemy' && battleScene && !battleEnded.value) {
+  const scene = battleScene
+  if (turn === 'enemy' && scene && !battleEnded.value) {
     setTimeout(() => {
       if (gameStore.battle.inBattle && gameStore.battle.enemy) {
-        battleScene!.enemyAttack()
+        scene.enemyAttack()
         const damageMatch = gameStore.battle.battleLog[gameStore.battle.battleLog.length - 1]?.match(/(\d+)\s*点伤害/)
         const damage = damageMatch ? parseInt(damageMatch[1]) : 0
         
-        if (battleScene!.playerSprite) {
-          battleScene!.createDamageText(
+        if (scene.playerSprite) {
+          scene.createDamageText(
             damage,
-            battleScene!.playerSprite.x,
-            battleScene!.playerSprite.y - 30,
+            scene.playerSprite.x,
+            scene.playerSprite.y - 30,
             false
           )
         }

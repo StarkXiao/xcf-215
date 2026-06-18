@@ -95,6 +95,7 @@ export interface Enemy {
   maxHp: number
   attack: number
   defense: number
+  speed: number
   element: Element
   icon: string
 }
