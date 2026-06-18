@@ -106,6 +106,10 @@ export interface Reward {
   itemId?: string
 }
 
+export const TEAM_SIZE = 3
+
+export type TeamSlot = 0 | 1 | 2
+
 export interface PlayerData {
   name: string
   level: number
@@ -116,6 +120,7 @@ export interface PlayerData {
   eggs: Egg[]
   ownedBeasts: OwnedBeast[]
   activeBeastId: string | null
+  team: (string | null)[]
   inventory: {
     foods: { [foodId: string]: number }
     materials: { [materialId: string]: number }

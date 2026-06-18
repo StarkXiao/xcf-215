@@ -1,11 +1,11 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, computed } from 'vue'
+import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useGameStore } from '@/stores/game'
 import { getBeastById } from '@/data/beasts'
 import { BeastDisplay } from '@/utils/pixi'
-import { RARITY_NAMES, ELEMENT_NAMES, RARITY_COLORS, ELEMENT_COLORS, BOND_CATEGORY_NAMES, BOND_CATEGORY_COLORS } from '@/types'
-import type { ActiveBond, BondEffect } from '@/types'
+import { RARITY_NAMES, ELEMENT_NAMES, RARITY_COLORS, ELEMENT_COLORS, BOND_CATEGORY_NAMES, BOND_CATEGORY_COLORS, TEAM_SIZE } from '@/types'
+import type { ActiveBond, BondEffect, OwnedBeast, TeamSlot } from '@/types'
 
 const router = useRouter()
 const gameStore = useGameStore()
@@ -30,6 +30,60 @@ const formatBondEffect = (effect: BondEffect): string => {
   if (effect.defensePercent > 0) parts.push(`🛡️+${effect.defensePercent}%`)
   if (effect.speedPercent > 0) parts.push(`💨+${effect.speedPercent}%`)
   return parts.join(' ')
+}
+
+const teamSlotLabels = ['主战位', '辅位·壹', '辅位·贰']
+const teamSlotColors = ['#F59E0B', '#3B82F6', '#8B5CF6']
+
+const showTeamModal = ref(false)
+const editingSlot = ref<TeamSlot | null>(null)
+
+const availableBeastsForEdit = computed(() => {
+  if (!gameStore.player) return []
+  const teamSet = new Set(gameStore.player.team.filter(Boolean))
+  return gameStore.player.ownedBeasts.filter(b => !teamSet.has(b.instanceId))
+})
+
+const openTeamSlotEditor = (slot: TeamSlot) => {
+  editingSlot.value = slot
+  showTeamModal.value = true
+}
+
+const selectBeastForSlot = (beast: OwnedBeast) => {
+  if (editingSlot.value === null) return
+  gameStore.setTeamMember(editingSlot.value, beast.instanceId)
+  closeTeamModal()
+}
+
+const clearSlot = (slot: TeamSlot) => {
+  gameStore.clearTeamSlot(slot)
+}
+
+const closeTeamModal = () => {
+  showTeamModal.value = false
+  editingSlot.value = null
+}
+
+const getSlotBeastData = (slot: TeamSlot) => {
+  const beast = gameStore.teamBeasts[slot]
+  if (!beast) return null
+  const data = getBeastById(beast.beastId)
+  return data ? { beast, data } : null
+}
+
+const getSlotData = (slot: TeamSlot) => getSlotBeastData(slot)
+
+const slotData = (slot: TeamSlot) => {
+  const sd = getSlotData(slot)
+  if (!sd) return null
+  return sd
+}
+
+const elementEmoji = (element: string): string => {
+  const map: Record<string, string> = {
+    fire: '🔥', water: '💧', wood: '🌿', earth: '🪨', metal: '⚙️', thunder: '⚡', wind: '💨', ice: '❄️'
+  }
+  return map[element] || '🐾'
 }
 
 const quickActions = [
@@ -186,6 +240,47 @@ const selectBeast = (beastId: string) => {
       <div class="pixi-container" ref="pixiContainer"></div>
     </div>
 
+    <div class="team-section card" v-if="gameStore.player.ownedBeasts.length > 0">
+      <div class="card-header">
+        <span class="card-title">⚔️ 出战队伍</span>
+        <span class="team-subtitle">羁绊仅在出战队伍中生效</span>
+      </div>
+      <div class="team-slots">
+        <div 
+          v-for="(slot, index) in TEAM_SIZE" 
+          :key="'home-slot-' + index"
+          class="team-slot"
+          :style="{ '--slot-color': teamSlotColors[index] }"
+          @click="openTeamSlotEditor(index as TeamSlot)"
+        >
+          <div class="slot-label" :style="{ color: teamSlotColors[index] }">{{ teamSlotLabels[index] }}</div>
+          <template v-for="sd in [getSlotBeastData(index as TeamSlot)]" :key="index + '-data'">
+            <template v-if="sd">
+              <div class="slot-avatar" :style="{ borderColor: teamSlotColors[index] }">
+                {{ elementEmoji(sd.data.element) }}
+              </div>
+              <div class="slot-info">
+                <div class="slot-name">{{ sd.beast.name }}</div>
+                <div class="slot-meta">
+                  <span :style="{ color: RARITY_COLORS[sd.data.rarity] }">
+                    {{ RARITY_NAMES[sd.data.rarity] }}
+                  </span>
+                  <span>Lv.{{ sd.beast.level }}</span>
+                </div>
+              </div>
+              <button class="slot-clear" @click.stop="clearSlot(index as TeamSlot)" v-if="gameStore.teamBeasts.filter(b => b).length > 1">✕</button>
+            </template>
+            <template v-else>
+              <div class="slot-placeholder">
+                <span class="plus-icon">+</span>
+              </div>
+              <div class="slot-empty-tip">点击选择灵兽</div>
+            </template>
+          </template>
+        </div>
+      </div>
+    </div>
+
     <div class="beast-selector card" v-if="gameStore.player.ownedBeasts.length > 0">
       <div class="card-header">
         <span class="card-title">我的灵兽</span>
@@ -291,6 +386,52 @@ const selectBeast = (beastId: string) => {
         <button class="btn btn-primary btn-small" @click="navigateTo('/hatch')">
           查看
         </button>
+      </div>
+    </div>
+
+    <div class="modal-overlay" v-if="showTeamModal" @click="closeTeamModal">
+      <div class="modal team-modal" @click.stop>
+        <div class="modal-header">
+          <span class="modal-title">
+            选择放入「{{ editingSlot !== null ? teamSlotLabels[editingSlot] : '' }}」的灵兽
+          </span>
+          <button class="modal-close" @click="closeTeamModal">✕</button>
+        </div>
+        <div class="modal-body">
+          <div class="team-modal-empty" v-if="availableBeastsForEdit.length === 0">
+            <span class="empty-icon">🐾</span>
+            <p class="empty-text">没有可加入的灵兽了，请到「喂养成长」查看所有灵兽</p>
+          </div>
+          <div class="team-modal-list" v-else>
+            <div 
+              v-for="beast in availableBeastsForEdit" 
+              :key="beast.instanceId"
+              class="team-modal-item"
+              @click="selectBeastForSlot(beast)"
+            >
+              <div class="team-modal-avatar" :style="{ borderColor: RARITY_COLORS[getBeastById(beast.beastId)!.rarity] }">
+                {{ elementEmoji(getBeastById(beast.beastId)!.element) }}
+              </div>
+              <div class="team-modal-info">
+                <div class="team-modal-name">{{ beast.name }}</div>
+                <div class="team-modal-meta">
+                  <span :style="{ color: RARITY_COLORS[getBeastById(beast.beastId)!.rarity] }">
+                    {{ RARITY_NAMES[getBeastById(beast.beastId)!.rarity] }}
+                  </span>
+                  <span style="color: var(--text-muted)">·</span>
+                  <span style="color: ELEMENT_COLORS[getBeastById(beast.beastId)!.element]">
+                    {{ ELEMENT_NAMES[getBeastById(beast.beastId)!.element] }}系
+                  </span>
+                  <span>Lv.{{ beast.level }}</span>
+                </div>
+              </div>
+              <div class="team-modal-stats">
+                <span>⚔️{{ beast.attack }}</span>
+                <span>🛡️{{ beast.defense }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -680,6 +821,250 @@ const selectBeast = (beastId: string) => {
   font-size: 10px;
   color: #22C55E;
   font-weight: bold;
+}
+
+.team-subtitle {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.team-slots {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+.team-slot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 12px 8px;
+  background: rgba(0, 0, 0, 0.25);
+  border: 2px solid var(--slot-color, #666);
+  border-radius: 14px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  position: relative;
+}
+
+.team-slot:hover {
+  background: rgba(0, 0, 0, 0.35);
+  transform: translateY(-2px);
+}
+
+.slot-label {
+  font-size: 11px;
+  font-weight: bold;
+}
+
+.slot-avatar {
+  width: 50px;
+  height: 50px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  border: 3px solid;
+  background: rgba(0, 0, 0, 0.4);
+  font-size: 26px;
+}
+
+.slot-info {
+  text-align: center;
+  min-width: 0;
+  width: 100%;
+}
+
+.slot-name {
+  font-size: 12px;
+  font-weight: bold;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.slot-meta {
+  font-size: 10px;
+  display: flex;
+  justify-content: center;
+  gap: 4px;
+  color: var(--text-secondary);
+}
+
+.slot-clear {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 20px;
+  height: 20px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(239, 68, 68, 0.9);
+  color: white;
+  font-size: 10px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.slot-placeholder {
+  width: 50px;
+  height: 50px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  border: 2px dashed rgba(255, 255, 255, 0.3);
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.plus-icon {
+  font-size: 20px;
+  color: rgba(255, 255, 255, 0.4);
+  font-weight: bold;
+}
+
+.slot-empty-tip {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.75);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 20px;
+}
+
+.modal {
+  width: 100%;
+  max-width: 400px;
+  max-height: 85vh;
+  background: var(--bg-primary);
+  border: 2px solid var(--accent-color);
+  border-radius: 16px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.modal-title {
+  font-size: 14px;
+  font-weight: bold;
+  color: var(--accent-color);
+}
+
+.modal-close {
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.3);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.modal-body {
+  padding: 14px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.team-modal-empty {
+  text-align: center;
+  padding: 30px 10px;
+}
+
+.empty-icon {
+  font-size: 48px;
+  display: block;
+  margin-bottom: 10px;
+}
+
+.empty-text {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.team-modal-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.team-modal-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  background: rgba(0, 0, 0, 0.25);
+  border: 2px solid transparent;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.team-modal-item:hover {
+  border-color: var(--accent-color);
+  background: rgba(255, 215, 0, 0.05);
+}
+
+.team-modal-avatar {
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  border: 2px solid;
+  background: rgba(0, 0, 0, 0.4);
+  font-size: 22px;
+  flex-shrink: 0;
+}
+
+.team-modal-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.team-modal-name {
+  font-size: 13px;
+  font-weight: bold;
+  color: var(--text-primary);
+  margin-bottom: 2px;
+}
+
+.team-modal-meta {
+  font-size: 11px;
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  color: var(--text-secondary);
+}
+
+.team-modal-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  text-align: right;
+  flex-shrink: 0;
 }
 
 @media (max-width: 480px) {

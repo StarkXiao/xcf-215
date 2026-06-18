@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import type { PlayerData, OwnedBeast, Egg, BattleState, Rarity, Element, ActiveBond, BondEffect } from '@/types'
+import type { PlayerData, OwnedBeast, Egg, BattleState, Rarity, Element, ActiveBond, BondEffect, TeamSlot } from '@/types'
+import { TEAM_SIZE } from '@/types'
 import { 
   saveGame, 
   loadGame, 
@@ -45,50 +46,42 @@ export const useGameStore = defineStore('game', () => {
     return player.value.ownedBeasts.find(b => b.instanceId === activeId) || null
   })
 
-  const stages = computed(() => {
-    if (!player.value) return STAGES_DATA
-    return STAGES_DATA.map(stage => ({
-      ...stage,
-      completed: player.value!.completedStages.includes(stage.id),
-      unlocked: stage.id === 'stage_1' || 
-        player.value!.completedStages.includes(STAGES_DATA[STAGES_DATA.findIndex(s => s.id === stage.id) - 1]?.id || '')
-    }))
+  const teamBeasts = computed<(OwnedBeast | null)[]>(() => {
+    if (!player.value) return [null, null, null]
+    return player.value.team.map(id => {
+      if (!id) return null
+      return player.value!.ownedBeasts.find(b => b.instanceId === id) || null
+    })
   })
 
-  const discoveredBeasts = computed(() => {
-    if (!player.value) return []
-    return BEASTS_DATA.map(beast => ({
-      ...beast,
-      discovered: player.value!.discoveredBeasts.includes(beast.id)
-    }))
+  const teamBeastIds = computed(() => {
+    return teamBeasts.value.filter(b => b !== null).map(b => b!.beastId)
   })
 
-  const activeBonds = computed<ActiveBond[]>(() => {
-    if (!player.value || player.value.ownedBeasts.length === 0) return []
+  const calculateBondsFromBeasts = (beasts: OwnedBeast[]): ActiveBond[] => {
+    if (beasts.length === 0) return []
 
-    const ownedBeastIds = new Set(player.value.ownedBeasts.map(b => b.beastId))
-    const ownedElements: Element[] = []
-    const ownedRarities: Rarity[] = []
-    
-    for (const beast of player.value.ownedBeasts) {
+    const beastIds = new Set(beasts.map(b => b.beastId))
+    const elements: Element[] = []
+    const rarities: Rarity[] = []
+
+    for (const beast of beasts) {
       const data = getBeastById(beast.beastId)
       if (data) {
-        ownedElements.push(data.element)
-        ownedRarities.push(data.rarity)
+        elements.push(data.element)
+        rarities.push(data.rarity)
       }
     }
 
     const elementCounts: Partial<Record<Element, number>> = {}
-    for (const el of ownedElements) {
+    for (const el of elements) {
       elementCounts[el] = (elementCounts[el] || 0) + 1
     }
 
     const rarityCounts: Partial<Record<Rarity, number>> = {}
-    for (const r of ownedRarities) {
+    for (const r of rarities) {
       rarityCounts[r] = (rarityCounts[r] || 0) + 1
     }
-
-    const uniqueElements = new Set(ownedElements).size
 
     const result: ActiveBond[] = []
 
@@ -99,35 +92,31 @@ export const useGameStore = defineStore('game', () => {
       if (bondConfig.category === 'element') {
         const el = bondConfig.condition as Element
         currentCount = elementCounts[el] || 0
-        for (const beast of player.value.ownedBeasts) {
+        for (const beast of beasts) {
           const data = getBeastById(beast.beastId)
-          if (data && data.element === el) {
-            if (!matchedBeastIds.includes(beast.beastId)) {
-              matchedBeastIds.push(beast.beastId)
-            }
+          if (data && data.element === el && !matchedBeastIds.includes(beast.beastId)) {
+            matchedBeastIds.push(beast.beastId)
           }
         }
       } else if (bondConfig.category === 'rarity') {
         const r = bondConfig.condition as Rarity
         currentCount = rarityCounts[r] || 0
-        for (const beast of player.value.ownedBeasts) {
+        for (const beast of beasts) {
           const data = getBeastById(beast.beastId)
-          if (data && data.rarity === r) {
-            if (!matchedBeastIds.includes(beast.beastId)) {
-              matchedBeastIds.push(beast.beastId)
-            }
+          if (data && data.rarity === r && !matchedBeastIds.includes(beast.beastId)) {
+            matchedBeastIds.push(beast.beastId)
           }
         }
       } else if (bondConfig.category === 'special') {
         const condArr = bondConfig.condition as string[]
-        
+
         if (bondConfig.id === 'special_five_elements') {
           const fiveEls = ['fire', 'water', 'wood', 'earth', 'metal'] as Element[]
           let matchCount = 0
           for (const el of fiveEls) {
             if (elementCounts[el] && elementCounts[el]! > 0) {
               matchCount++
-              for (const beast of player.value.ownedBeasts) {
+              for (const beast of beasts) {
                 const data = getBeastById(beast.beastId)
                 if (data && data.element === el && !matchedBeastIds.includes(beast.beastId)) {
                   matchedBeastIds.push(beast.beastId)
@@ -143,7 +132,7 @@ export const useGameStore = defineStore('game', () => {
           for (const el of allEls) {
             if (elementCounts[el] && elementCounts[el]! > 0) {
               matchCount++
-              for (const beast of player.value.ownedBeasts) {
+              for (const beast of beasts) {
                 const data = getBeastById(beast.beastId)
                 if (data && data.element === el && !matchedBeastIds.includes(beast.beastId)) {
                   matchedBeastIds.push(beast.beastId)
@@ -155,7 +144,7 @@ export const useGameStore = defineStore('game', () => {
           currentCount = matchCount
         } else {
           for (const condId of condArr) {
-            if (ownedBeastIds.has(condId)) {
+            if (beastIds.has(condId)) {
               currentCount++
               matchedBeastIds.push(condId)
             }
@@ -172,6 +161,34 @@ export const useGameStore = defineStore('game', () => {
     }
 
     return result
+  }
+
+  const ownedBonds = computed<ActiveBond[]>(() => {
+    if (!player.value) return []
+    return calculateBondsFromBeasts(player.value.ownedBeasts)
+  })
+
+  const activeBonds = computed<ActiveBond[]>(() => {
+    const inTeam = teamBeasts.value.filter((b): b is OwnedBeast => b !== null)
+    return calculateBondsFromBeasts(inTeam)
+  })
+
+  const stages = computed(() => {
+    if (!player.value) return STAGES_DATA
+    return STAGES_DATA.map(stage => ({
+      ...stage,
+      completed: player.value!.completedStages.includes(stage.id),
+      unlocked: stage.id === 'stage_1' || 
+        player.value!.completedStages.includes(STAGES_DATA[STAGES_DATA.findIndex(s => s.id === stage.id) - 1]?.id || '')
+    }))
+  })
+
+  const discoveredBeasts = computed(() => {
+    if (!player.value) return []
+    return BEASTS_DATA.map(beast => ({
+      ...beast,
+      discovered: player.value!.discoveredBeasts.includes(beast.id)
+    }))
   })
 
   const totalBondEffects = computed<BondEffect>(() => {
@@ -221,6 +238,7 @@ export const useGameStore = defineStore('game', () => {
     const saved = loadGame()
     if (saved) {
       player.value = saved
+      ensureTeamData()
       const earnings = calculateOfflineEarnings(saved.lastLoginAt)
       if (earnings.duration > 60000) {
         offlineRewards.value = earnings
@@ -243,6 +261,7 @@ export const useGameStore = defineStore('game', () => {
       eggs: [],
       ownedBeasts: [],
       activeBeastId: null,
+      team: [null, null, null],
       inventory: {
         foods: {
           'spirit_fruit': 10,
@@ -261,6 +280,17 @@ export const useGameStore = defineStore('game', () => {
     giveEgg('egg_common')
     
     saveCurrentGame()
+  }
+
+  const ensureTeamData = () => {
+    if (!player.value) return
+    if (!player.value.team || player.value.team.length !== TEAM_SIZE) {
+      player.value.team = [null, null, null]
+      if (player.value.activeBeastId) {
+        player.value.team[0] = player.value.activeBeastId
+      }
+      saveCurrentGame()
+    }
   }
 
   const saveCurrentGame = () => {
@@ -385,6 +415,18 @@ export const useGameStore = defineStore('game', () => {
       player.value.activeBeastId = newBeast.instanceId
     }
     
+    if (!player.value.team[0]) {
+      player.value.team[0] = newBeast.instanceId
+    } else if (!player.value.team[1]) {
+      if (player.value.team[0] !== newBeast.instanceId) {
+        player.value.team[1] = newBeast.instanceId
+      }
+    } else if (!player.value.team[2]) {
+      if (player.value.team[0] !== newBeast.instanceId && player.value.team[1] !== newBeast.instanceId) {
+        player.value.team[2] = newBeast.instanceId
+      }
+    }
+    
     player.value.eggs.splice(eggIndex, 1)
     
     saveCurrentGame()
@@ -394,10 +436,77 @@ export const useGameStore = defineStore('game', () => {
   const setActiveBeast = (instanceId: string) => {
     if (!player.value) return
     const beast = player.value.ownedBeasts.find(b => b.instanceId === instanceId)
-    if (beast) {
-      player.value.activeBeastId = instanceId
-      saveCurrentGame()
+    if (!beast) return
+    player.value.activeBeastId = instanceId
+    const currentTeamSet = new Set(player.value.team.filter(Boolean))
+    if (!currentTeamSet.has(instanceId)) {
+      let placed = false
+      for (let i = 0; i < TEAM_SIZE; i++) {
+        if (!player.value.team[i]) {
+          player.value.team[i] = instanceId
+          placed = true
+          break
+        }
+      }
+      if (!placed) {
+        player.value.team[0] = instanceId
+      }
     }
+    saveCurrentGame()
+  }
+
+  const setTeamMember = (slot: TeamSlot, instanceId: string | null): boolean => {
+    if (!player.value) return false
+    if (slot < 0 || slot >= TEAM_SIZE) return false
+    if (instanceId !== null) {
+      const beast = player.value.ownedBeasts.find(b => b.instanceId === instanceId)
+      if (!beast) return false
+      for (let i = 0; i < TEAM_SIZE; i++) {
+        if (i !== slot && player.value.team[i] === instanceId) {
+          player.value.team[i] = null
+        }
+      }
+    }
+    player.value.team[slot] = instanceId
+    if (slot === 0 && instanceId) {
+      player.value.activeBeastId = instanceId
+    }
+    if (!player.value.team[0]) {
+      const firstInTeam = player.value.team.find((id, i) => i > 0 && id)
+      if (firstInTeam) {
+        player.value.team[0] = firstInTeam
+        player.value.team[player.value.team.indexOf(firstInTeam)] = null
+        player.value.activeBeastId = firstInTeam
+      } else {
+        player.value.activeBeastId = null
+      }
+    } else {
+      if (!player.value.activeBeastId || !player.value.team.includes(player.value.activeBeastId)) {
+        player.value.activeBeastId = player.value.team[0]
+      }
+    }
+    saveCurrentGame()
+    return true
+  }
+
+  const clearTeamSlot = (slot: TeamSlot) => {
+    setTeamMember(slot, null)
+  }
+
+  const swapTeamMembers = (slotA: TeamSlot, slotB: TeamSlot) => {
+    if (!player.value) return
+    if (slotA < 0 || slotA >= TEAM_SIZE || slotB < 0 || slotB >= TEAM_SIZE) return
+    const temp = player.value.team[slotA]
+    player.value.team[slotA] = player.value.team[slotB]
+    player.value.team[slotB] = temp
+    if (slotA === 0 && player.value.team[0]) {
+      player.value.activeBeastId = player.value.team[0]
+    } else if (slotB === 0 && player.value.team[0]) {
+      player.value.activeBeastId = player.value.team[0]
+    } else if (!player.value.team[0]) {
+      player.value.activeBeastId = null
+    }
+    saveCurrentGame()
   }
 
   const feedBeast = (beastInstanceId: string, foodId: string): boolean => {
@@ -723,8 +832,11 @@ export const useGameStore = defineStore('game', () => {
     offlineRewards,
     currentEnemyIndex,
     activeBonds,
+    ownedBonds,
     totalBondEffects,
     activeBondList,
+    teamBeasts,
+    teamBeastIds,
     initGame,
     saveCurrentGame,
     collectOfflineRewards,
@@ -733,6 +845,9 @@ export const useGameStore = defineStore('game', () => {
     updateAllEggs,
     hatchEgg,
     setActiveBeast,
+    setTeamMember,
+    clearTeamSlot,
+    swapTeamMembers,
     feedBeast,
     unlockSkill,
     upgradeSkill,

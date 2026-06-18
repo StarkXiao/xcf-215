@@ -85,16 +85,29 @@ const elementOptions = [
 ]
 
 const bondProgress = computed(() => {
-  const total = gameStore.activeBonds.length
-  const active = gameStore.activeBondList.length
-  return { total, active, percentage: total > 0 ? Math.floor((active / total) * 100) : 0 }
+  const total = gameStore.ownedBonds.length
+  const ownActive = gameStore.ownedBonds.filter(b => b.active).length
+  const teamActive = gameStore.activeBondList.length
+  return { 
+    total, 
+    ownActive, 
+    teamActive, 
+    percentage: total > 0 ? Math.floor((ownActive / total) * 100) : 0 
+  }
 })
 
 const bondsByCategory = computed(() => {
-  const categories: { key: string; label: string; color: string; bonds: ActiveBond[] }[] = []
-  const seen = new Set<string>()
+  const activeSet = new Set(gameStore.activeBondList.map(b => b.config.id))
+  const categories: { 
+    key: string; 
+    label: string; 
+    color: string; 
+    bonds: (ActiveBond & { activeInTeam: boolean })[] 
+  }[] = []
   for (const cat of ['element', 'rarity', 'special'] as const) {
-    const bonds = gameStore.activeBonds.filter(b => b.config.category === cat)
+    const bonds = gameStore.ownedBonds
+      .filter(b => b.config.category === cat)
+      .map(b => ({ ...b, activeInTeam: activeSet.has(b.config.id) }))
     if (bonds.length > 0) {
       categories.push({
         key: cat,
@@ -192,12 +205,17 @@ const bondsByCategory = computed(() => {
       </div>
     </div>
 
-    <div class="bond-codex card" v-if="gameStore.activeBonds.length > 0">
+    <div class="bond-codex card" v-if="gameStore.ownedBonds.length > 0">
       <div class="card-header">
         <span class="card-title">🔗 羁绊图鉴</span>
-        <span class="bond-progress-text" v-if="bondProgress.active > 0">
-          {{ bondProgress.active }}/{{ bondProgress.total }} 已激活
-        </span>
+        <div class="bond-progress-texts">
+          <span class="bond-progress-text owned">
+            拥有 {{ bondProgress.ownActive }}/{{ bondProgress.total }}
+          </span>
+          <span class="bond-progress-text team" v-if="bondProgress.teamActive > 0">
+            出战 {{ bondProgress.teamActive }}
+          </span>
+        </div>
       </div>
       <div class="bond-overview">
         <div class="bond-overview-bar">
@@ -225,17 +243,19 @@ const bondsByCategory = computed(() => {
             v-for="bond in category.bonds" 
             :key="bond.config.id"
             class="bond-codex-item"
-            :class="{ active: bond.active }"
+            :class="{ active: bond.active, 'team-active': bond.activeInTeam }"
           >
             <div class="bond-codex-icon" :style="{ 
               backgroundColor: bond.active ? category.color + '20' : 'rgba(0,0,0,0.2)',
               borderColor: bond.active ? category.color : 'transparent'
             }">
               {{ bond.config.icon }}
+              <span class="team-badge" v-if="bond.activeInTeam">战</span>
             </div>
             <div class="bond-codex-info">
               <div class="bond-codex-name" :style="{ color: bond.active ? category.color : 'var(--text-muted)' }">
                 {{ bond.config.name }}
+                <span class="team-active-tag" v-if="bond.activeInTeam">出战已激活</span>
               </div>
               <div class="bond-codex-desc">{{ bond.config.description }}</div>
               <div class="bond-codex-progress">
@@ -646,6 +666,68 @@ const bondsByCategory = computed(() => {
   font-size: 12px;
   color: #22C55E;
   font-weight: bold;
+}
+
+.bond-progress-texts {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.bond-progress-text {
+  font-size: 11px;
+  font-weight: bold;
+}
+
+.bond-progress-text.owned {
+  color: #22C55E;
+}
+
+.bond-progress-text.team {
+  padding: 2px 6px;
+  background: rgba(245, 158, 11, 0.2);
+  border: 1px solid rgba(245, 158, 11, 0.4);
+  border-radius: 6px;
+  color: #F59E0B;
+}
+
+.bond-codex-item.team-active {
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.08), rgba(34, 197, 94, 0.05));
+  border-color: rgba(245, 158, 11, 0.35);
+}
+
+.bond-codex-icon {
+  position: relative;
+}
+
+.team-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  width: 16px;
+  height: 16px;
+  background: #F59E0B;
+  color: #fff;
+  border-radius: 50%;
+  font-size: 9px;
+  font-weight: bold;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  border: 1px solid #fff;
+}
+
+.team-active-tag {
+  margin-left: 6px;
+  padding: 1px 5px;
+  background: #F59E0B;
+  color: #fff;
+  border-radius: 4px;
+  font-size: 9px;
+  font-weight: bold;
+  vertical-align: middle;
+  white-space: nowrap;
 }
 
 .bond-overview {

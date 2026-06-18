@@ -4,8 +4,8 @@ import { useGameStore } from '@/stores/game'
 import { getBeastById } from '@/data/beasts'
 import { FOODS_DATA, getFoodById } from '@/data/foods'
 import { BeastDisplay } from '@/utils/pixi'
-import { RARITY_NAMES, ELEMENT_NAMES, RARITY_COLORS, ELEMENT_COLORS, BOND_CATEGORY_COLORS } from '@/types'
-import type { BondEffect } from '@/types'
+import { RARITY_NAMES, ELEMENT_NAMES, RARITY_COLORS, ELEMENT_COLORS, BOND_CATEGORY_COLORS, TEAM_SIZE } from '@/types'
+import type { BondEffect, TeamSlot } from '@/types'
 
 const gameStore = useGameStore()
 const selectedBeastId = ref<string | null>(null)
@@ -135,6 +135,35 @@ const hasSelectedBeastBond = computed(() => {
 const getHealCost = (): number => {
   if (!selectedBeast.value) return 0
   return Math.floor(selectedBeast.value.maxHp * 0.5)
+}
+
+const selectedBeastTeamSlot = computed<TeamSlot | -1>(() => {
+  if (!selectedBeastId.value || !gameStore.player) return -1
+  const idx = gameStore.player.team.indexOf(selectedBeastId.value)
+  return (idx >= 0 ? idx : -1) as TeamSlot | -1
+})
+
+const emptyTeamSlot = computed<TeamSlot | -1>(() => {
+  if (!gameStore.player) return -1
+  const idx = gameStore.player.team.findIndex(id => id === null)
+  return (idx >= 0 ? idx : -1) as TeamSlot | -1
+})
+
+const teamSlotLabels = ['主战', '辅·壹', '辅·贰']
+
+const setAsMain = () => {
+  if (!selectedBeastId.value) return
+  gameStore.setTeamMember(0, selectedBeastId.value)
+}
+
+const addToTeam = () => {
+  if (!selectedBeastId.value || emptyTeamSlot.value === -1) return
+  gameStore.setTeamMember(emptyTeamSlot.value as TeamSlot, selectedBeastId.value)
+}
+
+const removeFromTeam = () => {
+  if (selectedBeastTeamSlot.value === -1) return
+  gameStore.clearTeamSlot(selectedBeastTeamSlot.value as TeamSlot)
 }
 </script>
 
@@ -302,6 +331,43 @@ const getHealCost = (): number => {
           >
             <span class="feed-bond-icon">{{ bond.config.icon }}</span>
             <span class="feed-bond-name" :style="{ color: BOND_CATEGORY_COLORS[bond.config.category] }">{{ bond.config.name }}</span>
+          </div>
+        </div>
+
+        <div class="team-status-bar">
+          <span class="team-status-title">⚔️ 出战队伍</span>
+          <div class="team-status-slots">
+            <div 
+              v-for="(slot, idx) in TEAM_SIZE" 
+              :key="'feed-slot-' + idx"
+              class="team-status-slot"
+              :class="{ filled: gameStore.teamBeasts[idx] }"
+            >
+              <span class="team-slot-num">{{ teamSlotLabels[idx] }}</span>
+            </div>
+          </div>
+          <div class="team-status-actions">
+            <button 
+              v-if="selectedBeastTeamSlot === -1 && emptyTeamSlot !== -1"
+              class="mini-btn mini-primary"
+              @click="addToTeam"
+            >
+              + 放入队伍
+            </button>
+            <button 
+              v-if="selectedBeastTeamSlot === -1"
+              class="mini-btn mini-accent"
+              @click="setAsMain"
+            >
+              设为主战
+            </button>
+            <button 
+              v-else
+              class="mini-btn mini-danger"
+              @click="removeFromTeam"
+            >
+              已在{{ teamSlotLabels[selectedBeastTeamSlot] }} · 移出
+            </button>
           </div>
         </div>
 
@@ -694,6 +760,96 @@ const getHealCost = (): number => {
 .feed-bond-name {
   font-size: 11px;
   font-weight: bold;
+}
+
+.team-status-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+  background: rgba(0, 0, 0, 0.25);
+  border-radius: 10px;
+  border: 1px solid var(--border-color);
+}
+
+.team-status-title {
+  font-size: 12px;
+  font-weight: bold;
+  color: var(--accent-color);
+}
+
+.team-status-slots {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+
+.team-status-slot {
+  padding: 5px 8px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px dashed rgba(255, 255, 255, 0.2);
+  text-align: center;
+  transition: all 0.3s ease;
+}
+
+.team-status-slot.filled {
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.15), rgba(0, 0, 0, 0.3));
+  border: 1px solid rgba(245, 158, 11, 0.4);
+}
+
+.team-slot-num {
+  font-size: 10px;
+  color: var(--text-secondary);
+  font-weight: bold;
+}
+
+.team-status-slot.filled .team-slot-num {
+  color: var(--accent-color);
+}
+
+.team-status-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.mini-btn {
+  padding: 5px 10px;
+  font-size: 11px;
+  font-weight: bold;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.mini-primary {
+  background: #22C55E;
+  color: white;
+}
+
+.mini-primary:hover {
+  background: #16A34A;
+}
+
+.mini-accent {
+  background: var(--accent-color);
+  color: #000;
+}
+
+.mini-accent:hover {
+  background: #EAB308;
+}
+
+.mini-danger {
+  background: rgba(239, 68, 68, 0.9);
+  color: white;
+}
+
+.mini-danger:hover {
+  background: #DC2626;
 }
 
 .action-buttons {

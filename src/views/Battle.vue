@@ -3,8 +3,8 @@ import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useGameStore } from '@/stores/game'
 import { getBeastById } from '@/data/beasts'
-import { RARITY_COLORS, ELEMENT_COLORS, ELEMENT_NAMES, RARITY_NAMES, BOND_CATEGORY_COLORS } from '@/types'
-import type { BondEffect } from '@/types'
+import { RARITY_COLORS, ELEMENT_COLORS, ELEMENT_NAMES, RARITY_NAMES, BOND_CATEGORY_COLORS, TEAM_SIZE } from '@/types'
+import type { BondEffect, TeamSlot } from '@/types'
 
 const router = useRouter()
 const gameStore = useGameStore()
@@ -46,6 +46,28 @@ const startBattle = (stageId: string) => {
 const getStageEnemiesText = (enemies: any[]): string => {
   return enemies.map(e => e.name).join('、')
 }
+
+const teamSlotLabels = ['主战', '辅·壹', '辅·贰']
+const teamSlotColors = ['#F59E0B', '#3B82F6', '#8B5CF6']
+
+const teamSlotEmoji = (slot: TeamSlot): string => {
+  const b = gameStore.teamBeasts[slot]
+  if (!b) return '＋'
+  const data = getBeastById(b.beastId)
+  const map: Record<string, string> = {
+    fire: '🔥', water: '💧', wood: '🌿', earth: '🪨', metal: '⚙️', thunder: '⚡', wind: '💨', ice: '❄️'
+  }
+  return data ? (map[data.element] || '🐾') : '＋'
+}
+
+const teamSlotBeastData = (slot: TeamSlot) => {
+  const b = gameStore.teamBeasts[slot]
+  if (!b) return null
+  const d = getBeastById(b.beastId)
+  return d ? { beast: b, data: d } : null
+}
+
+const goHome = () => { router.push('/') }
 </script>
 
 <template>
@@ -117,6 +139,55 @@ const getStageEnemiesText = (enemies: any[]): string => {
       </div>
       <div class="beast-warning" v-if="gameStore.activeBeast.hp <= 0">
         ⚠️ 灵兽已受伤，请先治疗再出战！
+      </div>
+    </div>
+
+    <div class="team-lineup card" v-if="gameStore.player.ownedBeasts.length > 0">
+      <div class="card-header">
+        <span class="card-title">🎯 出战队伍</span>
+        <button class="mini-btn" @click="goHome">去编辑</button>
+      </div>
+      <div class="team-lineup-slots">
+        <div 
+          v-for="(slot, index) in TEAM_SIZE" 
+          :key="'battle-slot-' + index"
+          class="lineup-slot"
+          :class="{ empty: !teamSlotBeastData(index as TeamSlot), main: index === 0 }"
+          :style="{ '--slot-color': teamSlotColors[index] }"
+        >
+          <div class="lineup-slot-badge">{{ teamSlotLabels[index] }}</div>
+          <div class="lineup-avatar">
+            {{ teamSlotEmoji(index as TeamSlot) }}
+          </div>
+          <template v-for="sd in [teamSlotBeastData(index as TeamSlot)]" :key="'ls-' + index">
+            <template v-if="sd">
+              <div class="lineup-name">{{ sd.beast.name }}</div>
+              <div class="lineup-level">
+                <span :style="{ color: RARITY_COLORS[sd.data.rarity] }">
+                  {{ RARITY_NAMES[sd.data.rarity] }}
+                </span>
+                · Lv.{{ sd.beast.level }}
+              </div>
+            </template>
+            <template v-else>
+              <div class="lineup-empty">未上阵</div>
+            </template>
+          </template>
+        </div>
+      </div>
+      <div class="team-bond-summary" v-if="gameStore.activeBondList.length > 0">
+        <span class="team-bond-label">已激活羁绊</span>
+        <div class="team-bond-tags">
+          <span 
+            v-for="bond in gameStore.activeBondList.slice(0, 3)" 
+            :key="bond.config.id"
+            class="team-bond-tag"
+            :style="{ color: BOND_CATEGORY_COLORS[bond.config.category], borderColor: BOND_CATEGORY_COLORS[bond.config.category] + '80' }"
+          >
+            {{ bond.config.icon }} {{ bond.config.name }}
+          </span>
+          <span class="team-bond-more" v-if="gameStore.activeBondList.length > 3">+{{ gameStore.activeBondList.length - 3 }}</span>
+        </div>
       </div>
     </div>
 
@@ -532,6 +603,136 @@ const getStageEnemiesText = (enemies: any[]): string => {
 
 .bond-detail-name {
   font-size: 11px;
+  font-weight: bold;
+}
+
+.mini-btn {
+  padding: 4px 10px;
+  font-size: 11px;
+  background: var(--accent-color);
+  color: #000;
+  border: none;
+  border-radius: 8px;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+.team-lineup-slots {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.lineup-slot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 6px;
+  background: rgba(0, 0, 0, 0.25);
+  border: 2px solid var(--slot-color, #666);
+  border-radius: 12px;
+  position: relative;
+}
+
+.lineup-slot.main {
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.15), rgba(0, 0, 0, 0.25));
+  box-shadow: 0 0 12px rgba(245, 158, 11, 0.15);
+}
+
+.lineup-slot.empty {
+  opacity: 0.55;
+}
+
+.lineup-slot-badge {
+  position: absolute;
+  top: -8px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 2px 8px;
+  background: var(--slot-color, #666);
+  color: #fff;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: bold;
+  white-space: nowrap;
+}
+
+.lineup-avatar {
+  width: 46px;
+  height: 46px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.4);
+  border: 2px solid var(--slot-color, #666);
+  font-size: 22px;
+  margin-top: 4px;
+}
+
+.lineup-name {
+  font-size: 12px;
+  font-weight: bold;
+  color: var(--text-primary);
+  max-width: 90px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.lineup-level {
+  font-size: 10px;
+  color: var(--text-secondary);
+}
+
+.lineup-empty {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.team-bond-summary {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 10px;
+  background: rgba(34, 197, 94, 0.08);
+  border: 1px dashed rgba(34, 197, 94, 0.3);
+  border-radius: 8px;
+}
+
+.team-bond-label {
+  font-size: 11px;
+  color: #22C55E;
+  font-weight: bold;
+  white-space: nowrap;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.team-bond-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.team-bond-tag {
+  padding: 2px 6px;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid;
+  border-radius: 6px;
+  font-size: 10px;
+  font-weight: bold;
+  white-space: nowrap;
+}
+
+.team-bond-more {
+  padding: 2px 6px;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 6px;
+  font-size: 10px;
+  color: var(--text-muted);
   font-weight: bold;
 }
 
